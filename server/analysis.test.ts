@@ -37,7 +37,7 @@ describe("Vector reversal analysis", () => {
   });
 
   it("turns a false resistance breakout into R2 PUT", () => {
-    const candles = [...flatHistory(), { time: 1_800, open: 100.05, high: 100.22, low: 100.02, close: 100.18 }, { time: 1_860, open: 100.14, high: 100.19, low: 100.01, close: 100.04 }];
+    const candles = [...flatHistory(), { time: 1_800, open: 100.05, high: 100.22, low: 100.02, close: 100.18 }, { time: 1_860, open: 100.14, high: 100.19, low: 99.98, close: 100.00 }];
     const result = analyze(candles);
     expect(result?.direction).toBe("put");
     expect(result?.activeLine).toBe("r2");

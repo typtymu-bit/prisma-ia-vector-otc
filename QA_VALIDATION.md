@@ -50,3 +50,8 @@ O terminal agora usa o timestamp do tick real de 1 segundo para agrupar a vela. 
 ## Pullback e falso rompimento
 
 A análise agora identifica falso rompimento usando duas velas: a primeira rompe a zona e a seguinte retorna para dentro. Rompimento falso de suporte com retorno gera R1/compra; rompimento falso de resistência com retorno gera R2/venda. Se o preço permanece fora da zona, o sinal continua bloqueado. Foram adicionados cenários de teste para os dois lados; a suíte final passou com 14 testes.
+
+
+## Validador de gap e fechamento dentro da zona
+
+Foi corrigido o caso mostrado na captura: uma vela que rompe e continua do lado errado da zona não pode gerar reversão. Para compra, a vela seguinte precisa retornar e fechar acima do suporte; para venda, precisa retornar e fechar abaixo da resistência. Caso contrário, o robô aguarda o fechamento e mantém o sinal bloqueado. Os cenários de falso rompimento dos dois lados continuam aprovados nos testes.

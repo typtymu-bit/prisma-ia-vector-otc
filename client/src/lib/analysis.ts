@@ -97,12 +97,12 @@ export function analyze(candles: Candle[]): VectorAnalysis | null {
   const trendDelta = last.close - average(candles.slice(-8, -3).map((item) => item.close));
   const trend = trendDelta > volatility * 0.35 ? "up" : trendDelta < -volatility * 0.35 ? "down" : "lateral";
   const callNear = Math.abs(last.low - levels.support) <= tolerance;
-  const callNotBroken = last.close >= levels.support - tolerance * 0.08 && last.low >= levels.support - tolerance * 0.65;
+  const callNotBroken = last.close >= levels.support && last.low >= levels.support - tolerance * 0.65;
   const callBodyAbove = Math.min(last.open, last.close) >= levels.support - tolerance * 0.12;
   const callReject = p.red && p.lowerWick >= p.body * 0.55;
   const callScore = [p.red, callReject, callNear, callBodyAbove, callNotBroken].filter(Boolean).length;
   const putNear = Math.abs(last.high - levels.resistance) <= tolerance;
-  const putNotBroken = last.close <= levels.resistance + tolerance * 0.08 && last.high <= levels.resistance + tolerance * 0.65;
+  const putNotBroken = last.close <= levels.resistance && last.high <= levels.resistance + tolerance * 0.65;
   const putBodyBelow = Math.max(last.open, last.close) <= levels.resistance + tolerance * 0.12;
   const putReject = p.green && p.upperWick >= p.body * 0.55;
   const putScore = [p.green, putReject, putNear, putBodyBelow, putNotBroken].filter(Boolean).length;
@@ -110,8 +110,8 @@ export function analyze(candles: Candle[]): VectorAnalysis | null {
   const previousParts = parts(previous);
   const breakoutBase = candles.slice(0, -2);
   const falseLevels = breakoutBase.length >= 23 ? findHorizontalLevels(breakoutBase) : levels;
-  const falseResistanceBreak = previousParts.green && previous.close > falseLevels.resistance + tolerance * 0.08 && last.close <= falseLevels.resistance + tolerance * 0.12 && last.high >= falseLevels.resistance - tolerance * 0.12 && p.red;
-  const falseSupportBreak = previousParts.red && previous.close < falseLevels.support - tolerance * 0.08 && last.close >= falseLevels.support - tolerance * 0.12 && last.low <= falseLevels.support + tolerance * 0.12 && p.green;
+  const falseResistanceBreak = previousParts.green && previous.close > falseLevels.resistance + tolerance * 0.08 && last.close <= falseLevels.resistance - tolerance * 0.05 && last.high >= falseLevels.resistance - tolerance * 0.12 && p.red;
+  const falseSupportBreak = previousParts.red && previous.close < falseLevels.support - tolerance * 0.08 && last.close >= falseLevels.support + tolerance * 0.05 && last.low <= falseLevels.support + tolerance * 0.12 && p.green;
   const direction: SignalDirection = falseSupportBreak || (callScore === 5 && putScore !== 5) ? "call" : falseResistanceBreak || (putScore === 5 && callScore !== 5) ? "put" : "hold";
   const activeLine: ActiveLine | null = direction === "call" ? "r1" : direction === "put" ? "r2" : null;
   const readiness = Math.max(callScore, putScore);
