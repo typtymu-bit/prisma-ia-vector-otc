@@ -223,7 +223,7 @@ class OtcBrokerConnection {
     return candlesPromise;
   }
 
-  async requestAssetCandles(activeId: number, params: { size: number; duration: number }) {
+  private async requestAssetCandlesOnce(activeId: number, params: { size: number; duration: number }) {
     await this.ensureConnected();
     if (!this.socket || !this.connected) throw new Error("Sessão OPTGO não está conectada.");
     const requestId = String(++this.sequence);
@@ -240,6 +240,23 @@ class OtcBrokerConnection {
       msg: { name: "get-candles", version: "2.0", body: { active_id: activeId, ...params } },
     }));
     return candlesPromise;
+  }
+
+  async requestAssetCandles(activeId: number, params: { size: number; duration: number }) {
+    let lastError: unknown = new Error("Feed OPTGO indisponível.");
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await this.requestAssetCandlesOnce(activeId, params);
+      } catch (error) {
+        lastError = error;
+        // A white-label OPTGO can keep the authenticated socket alive while
+        // dropping the first RPC after a restart. Reconnect once, then expose
+        // the real broker error instead of drawing synthetic market data.
+        this.reset(error instanceof Error ? error : new Error("Reconexão OPTGO necessária."));
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+    }
+    throw lastError;
   }
 
   async verify() {
