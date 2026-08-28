@@ -6,4 +6,4 @@
 - [x] Desenhar e atualizar os níveis no gráfico de 1 minuto.
 - [x] Adicionar entrada automática limitada ao modo DEMO, desligada por padrão e uma vez por vela.
 - [x] Validar testes, TypeScript, build e prévia responsiva.
-- [ ] Não habilitar execução real sem configuração explícita e confirmação do usuário.
+- [x] Manter execução real desligada sem configuração explícita e confirmação do usuário.
