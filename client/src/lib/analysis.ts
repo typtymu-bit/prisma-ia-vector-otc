@@ -1,7 +1,8 @@
 import type { Candle, SignalDirection } from "@shared/market";
 
 export type SignalState = "ready" | "watching" | "blocked";
-export type ActiveLine = "support" | "resistance";
+/** R1 is the buy-reversal line; R2 is the sell-reversal line. */
+export type ActiveLine = "r1" | "r2";
 
 export interface HorizontalLevels {
   support: number;
@@ -105,12 +106,12 @@ export function analyze(candles: Candle[]): VectorAnalysis | null {
   const putBodyBelow = Math.max(last.open, last.close) <= levels.resistance + tolerance * 0.12;
   const putReject = p.green && p.upperWick >= p.body * 0.55;
   const putScore = [p.green, putReject, putNear, putBodyBelow, putNotBroken].filter(Boolean).length;
-  const direction: SignalDirection = callScore === 5 ? "call" : putScore === 5 ? "put" : "hold";
-  const activeLine: ActiveLine | null = direction === "call" ? "support" : direction === "put" ? "resistance" : null;
+  const direction: SignalDirection = callScore === 5 && putScore !== 5 ? "call" : putScore === 5 && callScore !== 5 ? "put" : "hold";
+  const activeLine: ActiveLine | null = direction === "call" ? "r1" : direction === "put" ? "r2" : null;
   const readiness = Math.max(callScore, putScore);
   const reasons: string[] = []; const blocks: string[] = [];
-  if (direction === "call") { reasons.push("Vela vermelha rejeitou o suporte sem fechar abaixo."); reasons.push(`Suporte real em ${levels.support.toFixed(5)} com ${levels.supportTouches} toque${levels.supportTouches === 1 ? "" : "s"}.`); }
-  else if (direction === "put") { reasons.push("Vela verde rejeitou a resistência sem fechar acima."); reasons.push(`Resistência real em ${levels.resistance.toFixed(5)} com ${levels.resistanceTouches} toque${levels.resistanceTouches === 1 ? "" : "s"}.`); }
+  if (direction === "call") { reasons.push("R1 isolada: vela vermelha rejeitou o suporte sem fechar abaixo; sinal de compra."); reasons.push(`R1 em ${levels.support.toFixed(5)} com ${levels.supportTouches} toque${levels.supportTouches === 1 ? "" : "s"}.`); }
+  else if (direction === "put") { reasons.push("R2 isolada: vela verde rejeitou a resistência sem fechar acima; sinal de venda."); reasons.push(`R2 em ${levels.resistance.toFixed(5)} com ${levels.resistanceTouches} toque${levels.resistanceTouches === 1 ? "" : "s"}.`); }
   else if (callScore >= putScore) { if (!p.red) blocks.push("A vela não é vermelha para reversão de compra."); if (!callNear) blocks.push("O suporte real ainda não está próximo da mínima."); if (!callNotBroken || !callBodyAbove) blocks.push("O suporte foi rompido; compra bloqueada."); if (p.red && !callReject) blocks.push("Falta pavio de rejeição suficiente no suporte."); }
   else { if (!p.green) blocks.push("A vela não é verde para reversão de venda."); if (!putNear) blocks.push("A resistência real ainda não está próxima da máxima."); if (!putNotBroken || !putBodyBelow) blocks.push("A resistência foi rompida; venda bloqueada."); if (p.green && !putReject) blocks.push("Falta pavio de rejeição suficiente na resistência."); }
   if (last.close < levels.support - tolerance * 0.08) blocks.unshift("O suporte foi rompido; compra bloqueada.");

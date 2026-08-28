@@ -17,6 +17,7 @@ describe("Vector reversal analysis", () => {
     const candles = [...flatHistory(), { time: 1_800, open: 100.15, high: 100.18, low: 99.98, close: 100.05 }];
     const result = analyze(candles);
     expect(result?.direction).toBe("call");
+    expect(result?.activeLine).toBe("r1");
     expect(result?.signalReady).toBe(true);
   });
 
@@ -24,6 +25,7 @@ describe("Vector reversal analysis", () => {
     const candles = [...flatHistory(), { time: 1_800, open: 99.85, high: 100.02, low: 99.82, close: 99.95 }];
     const result = analyze(candles);
     expect(result?.direction).toBe("put");
+    expect(result?.activeLine).toBe("r2");
     expect(result?.signalReady).toBe(true);
   });
 
