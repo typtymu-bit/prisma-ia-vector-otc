@@ -1,15 +1,9 @@
 # Prisma IA Vector OTC — acompanhamento
 
-- [x] Auditar o arquivo original e identificar a lógica real de força Touros × Ursos.
-- [x] Remover EMA, RSI, Bollinger e camadas antigas do motor ativo.
-- [x] Criar quatro níveis horizontais reais: dois suportes e duas resistências.
-- [x] Aplicar R1 isolada para compra e R2 isolada para venda.
-- [x] Bloquear rompimento confirmado.
-- [x] Detectar falso rompimento com pullback para dentro da zona.
-- [x] Validar gap: não sinalizar enquanto a vela ficar do lado errado; aguardar fechamento.
-- [x] Gerar compra somente com fechamento de retorno acima do suporte.
-- [x] Gerar venda somente com fechamento de retorno abaixo da resistência.
-- [x] Usar ticks reais para nascer a nova vela no primeiro segundo do minuto.
-- [x] Manter os 27 ativos OTC no menu e scanner.
-- [x] Manter execução real desligada sem configuração explícita e confirmação do usuário.
+- [x] Manter os IDs OPTGO originais dos 12 pares e 10 ações solicitados.
+- [x] Validar timestamps exclusivos e intervalo de 60 segundos.
+- [x] Validar OHLC coerente em cada candle.
+- [x] Rejeitar feed plano ou duplicado para não desenhar quatro linhas no mesmo preço.
+- [x] Mostrar indisponibilidade em vez de reutilizar dados de outro ativo.
+- [x] Preservar R1 compra, R2 venda, pullback e bloqueio por rompimento.
 - [x] Validar 14 testes, TypeScript e build.

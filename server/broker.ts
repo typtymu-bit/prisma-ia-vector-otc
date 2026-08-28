@@ -94,6 +94,15 @@ function isOneMinute(candles: Candle[]) {
   return intervals.length > 0 && intervals.every((interval) => interval === 60);
 }
 
+function isUsableAssetFeed(candles: Candle[]) {
+  if (candles.length < 23 || !isOneMinute(candles)) return false;
+  const recent = candles.slice(-60);
+  const uniqueTimes = new Set(recent.map((candle) => candle.time)).size;
+  const uniqueCloses = new Set(recent.map((candle) => candle.close.toFixed(8))).size;
+  const validOhlc = recent.every((candle) => candle.open > 0 && candle.high >= Math.max(candle.open, candle.close) && candle.low <= Math.min(candle.open, candle.close));
+  return uniqueTimes === recent.length && uniqueCloses >= 3 && validOhlc;
+}
+
 async function loginForSession(): Promise<string> {
   const email = process.env.OPTGO_BROKER_EMAIL?.trim();
   const password = process.env.OPTGO_BROKER_PASSWORD?.trim();
@@ -282,8 +291,8 @@ export async function getMarketSnapshot(assetId: number, count = 120): Promise<M
   const startedAt = Date.now();
   try {
     const candles = (await connection.requestAssetCandles(assetId, ONE_MINUTE_REQUEST)).slice(-count);
-    if (candles.length < 23 || !isOneMinute(candles)) {
-      return { assetId, candles: [], source: "unavailable", updatedAt: Date.now(), latencyMs: Date.now() - startedAt, error: "A corretora não retornou candles reais de 1 minuto para este ativo." };
+    if (!isUsableAssetFeed(candles)) {
+      return { assetId, candles: [], source: "unavailable", updatedAt: Date.now(), latencyMs: Date.now() - startedAt, error: "A corretora não retornou candles 1M variados e coerentes para este ativo; o gráfico foi protegido contra dados de outro ativo." };
     }
     return { assetId, candles, source: "broker", updatedAt: Date.now(), latencyMs: Date.now() - startedAt, candleDurationSeconds: 60 };
   } catch (error) {

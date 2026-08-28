@@ -55,3 +55,8 @@ A análise agora identifica falso rompimento usando duas velas: a primeira rompe
 ## Validador de gap e fechamento dentro da zona
 
 Foi corrigido o caso mostrado na captura: uma vela que rompe e continua do lado errado da zona não pode gerar reversão. Para compra, a vela seguinte precisa retornar e fechar acima do suporte; para venda, precisa retornar e fechar abaixo da resistência. Caso contrário, o robô aguarda o fechamento e mantém o sinal bloqueado. Os cenários de falso rompimento dos dois lados continuam aprovados nos testes.
+
+
+## Correção dos ativos OTC solicitados
+
+Os ativos AUD/USD OTC, AUD/JPY OTC, USD/CHF OTC, CAD/JPY OTC, USD/CAD OTC, CHF/JPY OTC, GBP/AUD OTC, EUR/CHF OTC, GBP/CAD OTC, EUR/CAD OTC, NZD/USD OTC e as ações Apple, Amazon, Microsoft, NVIDIA, Google, Meta, Tesla, JPMorgan, Netflix e Boeing permanecem associados aos IDs OPTGO do arquivo original. O broker agora rejeita respostas 1M planas, duplicadas ou com OHLC incoerente, evitando que quatro linhas sejam desenhadas no mesmo preço quando a corretora não entregou o ativo selecionado.
