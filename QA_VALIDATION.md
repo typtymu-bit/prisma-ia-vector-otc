@@ -40,3 +40,8 @@ Após a última alteração, o terminal foi validado com snapshot de 1 segundo e
 A análise do `src/lib/analysis.ts` foi refeita sem EMA, RSI ou Bollinger. Agora as quatro linhas são zonas horizontais reais derivadas dos swings e clusters OHLC: suporte 1, suporte 2, resistência 1 e resistência 2. A vela candidata é comparada às zonas formadas antes dela; assim, uma vela que fecha além do nível é bloqueada e não gera compra/venda. O gráfico e as legendas foram atualizados para essas quatro linhas.
 
 A lista lateral, seletor móvel e scanner usam os 27 ativos do arquivo original sem corte artificial. Não há geração de candles fictícios: quando a corretora não responde, o painel permanece sem dados reais.
+
+
+## Atualização sem espera do polling
+
+O terminal agora usa o timestamp do tick real de 1 segundo para agrupar a vela. Quando o primeiro tick entra em um novo minuto, o frontend cria imediatamente a vela em formação localmente, atualiza o preço e dispara a análise da vela anterior. Isso evita esperar a próxima resposta completa de candles de 1 minuto para mostrar o nascimento. A validação final passou com 12 testes, checagem TypeScript e build.

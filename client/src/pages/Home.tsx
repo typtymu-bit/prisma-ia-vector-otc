@@ -71,18 +71,6 @@ export default function Home() {
     setAnalysisCandleTime(null);
     setMicroCandles([]);
   }, [activeId]);
-  useEffect(() => {
-    const currentCandleTime = snapshot?.candles.at(-1)?.time ?? null;
-    const closedCandles = snapshot?.candles.slice(0, -1) ?? [];
-    if (snapshot?.source === "broker" && currentCandleTime !== null && currentCandleTime !== analysisCandleTime) {
-      setAnalysis(analyze(closedCandles));
-      setAnalysisCandleTime(currentCandleTime);
-    }
-    if (snapshot?.source === "unavailable") {
-      setAnalysis(null);
-      setAnalysisCandleTime(null);
-    }
-  }, [snapshot, analysisCandleTime]);
   const now = useClock();
   const seconds = new Date(now).getSeconds();
   const remaining = 60 - seconds;
@@ -96,11 +84,29 @@ export default function Home() {
     if (snapshot?.source !== "broker" || !snapshot.candles.length || !tickQuery.data?.candle) return snapshot?.candles ?? [];
     const candles = snapshot.candles.slice();
     const last = candles.at(-1);
-    const liveClose = tickQuery.data.candle.close;
-    if (!last || !Number.isFinite(liveClose)) return candles;
-    candles[candles.length - 1] = { ...last, close: liveClose, high: Math.max(last.high, liveClose), low: Math.min(last.low, liveClose) };
+    const tickCandle = tickQuery.data.candle;
+    const tickMinute = Math.floor(tickCandle.time / 60) * 60;
+    if (!last || !Number.isFinite(tickCandle.close)) return candles;
+    if (tickMinute > last.time) {
+      candles.push({ time: tickMinute, open: tickCandle.open, high: tickCandle.high, low: tickCandle.low, close: tickCandle.close });
+      if (candles.length > 120) candles.shift();
+    } else if (tickMinute === last.time) {
+      candles[candles.length - 1] = { ...last, close: tickCandle.close, high: Math.max(last.high, tickCandle.high, tickCandle.close), low: Math.min(last.low, tickCandle.low, tickCandle.close) };
+    }
     return candles;
   }, [snapshot, tickQuery.data]);
+  useEffect(() => {
+    const currentCandleTime = displayCandles.at(-1)?.time ?? null;
+    const closedCandles = displayCandles.slice(0, -1);
+    if (snapshot?.source === "broker" && currentCandleTime !== null && currentCandleTime !== analysisCandleTime) {
+      setAnalysis(analyze(closedCandles));
+      setAnalysisCandleTime(currentCandleTime);
+    }
+    if (snapshot?.source === "unavailable") {
+      setAnalysis(null);
+      setAnalysisCandleTime(null);
+    }
+  }, [snapshot?.source, displayCandles, analysisCandleTime]);
   const terminalAnalysis = useMemo(() => {
     if (!analysis || snapshot?.source !== "broker") return analysis;
     const closed = snapshot.candles.slice(0, -1);
