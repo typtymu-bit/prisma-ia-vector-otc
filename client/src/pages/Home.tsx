@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownRight,
@@ -18,7 +18,7 @@ import {
   Sparkles,
   Waves,
 } from "lucide-react";
-import { analyze, type VectorAnalysis } from "@/lib/analysis";
+import { analyze, computeBigPlayersForce, type BigPlayersForce, type VectorAnalysis } from "@/lib/analysis";
 import { trpc } from "@/lib/trpc";
 import type { Candle, MarketSnapshot, OtcAsset } from "@shared/market";
 
@@ -65,6 +65,7 @@ export default function Home() {
   const snapshot = snapshotQuery.data;
   const [analysis, setAnalysis] = useState<VectorAnalysis | null>(null);
   const [analysisCandleTime, setAnalysisCandleTime] = useState<number | null>(null);
+  const [microCandles, setMicroCandles] = useState<Candle[]>([]);
   useEffect(() => {
     const currentCandleTime = snapshot?.candles.at(-1)?.time ?? null;
     const closedCandles = snapshot?.candles.slice(0, -1) ?? [];
@@ -81,6 +82,11 @@ export default function Home() {
   const seconds = new Date(now).getSeconds();
   const remaining = 60 - seconds;
   const livePrice = tickQuery.data?.candle?.close ?? analysis?.lastPrice;
+  useEffect(() => {
+    const incoming = tickQuery.data?.candles ?? [];
+    if (incoming.length) setMicroCandles(incoming);
+  }, [tickQuery.data]);
+  const force = useMemo<BigPlayersForce>(() => computeBigPlayersForce(microCandles), [microCandles]);
   const displayCandles = useMemo(() => {
     if (snapshot?.source !== "broker" || !snapshot.candles.length || !tickQuery.data?.candle) return snapshot?.candles ?? [];
     const candles = snapshot.candles.slice();
@@ -184,7 +190,7 @@ export default function Home() {
           </div>
 
           {view === "terminal" ? (
-            <Terminal snapshot={snapshot} candles={displayCandles} analysis={analysis} asset={activeAsset} livePrice={livePrice} loading={snapshotQuery.isLoading} remaining={remaining} onRefresh={() => void snapshotQuery.refetch()} />
+            <Terminal snapshot={snapshot} candles={displayCandles} analysis={analysis} force={force} asset={activeAsset} livePrice={livePrice} loading={snapshotQuery.isLoading} remaining={remaining} onRefresh={() => void snapshotQuery.refetch()} />
           ) : (
             <Scanner assets={assets} onSelect={(id) => { setActiveId(id); setView("terminal"); }} />
           )}
@@ -198,15 +204,26 @@ function NavButton({ active, icon, label, onClick }: { active: boolean; icon: Re
   return <button onClick={onClick} className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition ${active ? "bg-violet-400/12 text-violet-100 shadow-[inset_2px_0_0_#a78bfa]" : "text-slate-500 hover:bg-white/[0.04] hover:text-slate-200"}`}>{icon}<span>{label}</span></button>;
 }
 
-function Terminal({ snapshot, candles, analysis, asset, livePrice, loading, remaining, onRefresh }: { snapshot?: MarketSnapshot; candles: Candle[]; analysis: VectorAnalysis | null; asset?: OtcAsset; livePrice?: number; loading: boolean; remaining: number; onRefresh: () => void }) {
+function Terminal({ snapshot, candles, analysis, force, asset, livePrice, loading, remaining, onRefresh }: { snapshot?: MarketSnapshot; candles: Candle[]; analysis: VectorAnalysis | null; force: BigPlayersForce; asset?: OtcAsset; livePrice?: number; loading: boolean; remaining: number; onRefresh: () => void }) {
   const [amount, setAmount] = useState("10");
+  const [autoDemo, setAutoDemo] = useState(false);
   const [demoLog, setDemoLog] = useState<string | null>(null);
+  const lastAutoEntryRef = useRef<string | null>(null);
   const demoMutation = trpc.market.recordDemo.useMutation({
     onSuccess: (data) => setDemoLog(`${data.ticket} registrado para ${data.direction.toUpperCase()} em modo DEMO.`),
     onError: () => setDemoLog("Não foi possível registrar a operação demonstrativa."),
   });
   const estimated = (Number(amount) || 0) * ((asset?.payout ?? 0) / 100);
   const signalColor = analysis?.direction === "call" ? "emerald" : analysis?.direction === "put" ? "rose" : "violet";
+
+  useEffect(() => {
+    const formingCandle = snapshot?.candles.at(-1);
+    const key = asset && formingCandle ? `${asset.id}:${formingCandle.time}` : null;
+    if (!autoDemo || !analysis?.signalReady || snapshot?.source !== "broker" || !asset || !key) return;
+    if (lastAutoEntryRef.current === key) return;
+    lastAutoEntryRef.current = key;
+    demoMutation.mutate({ activeId: asset.id, direction: analysis.direction === "hold" ? "call" : analysis.direction, amount: Math.max(1, Number(amount) || 1) });
+  }, [amount, analysis?.direction, analysis?.signalReady, asset, autoDemo, demoMutation, snapshot?.candles, snapshot?.source]);
 
   return <div className="p-4 sm:p-6">
     <section className="flex flex-col justify-between gap-4 rounded-2xl border border-white/8 bg-[#10182a]/75 p-4 shadow-2xl shadow-black/10 xl:flex-row xl:items-center">
@@ -225,9 +242,9 @@ function Terminal({ snapshot, candles, analysis, asset, livePrice, loading, rema
       <div className="min-w-0 space-y-4">
         <section className="overflow-hidden rounded-2xl border border-white/8 bg-[#10182a]/75 shadow-2xl shadow-black/10">
           <div className="flex items-center justify-between border-b border-white/8 px-4 py-3"><div><p className="text-sm font-bold text-slate-200">Leitura Vector · 1M REAL</p><p className="mt-0.5 text-[11px] text-slate-500">A análise usa a última vela fechada; o preço vivo vem do feed de 1 segundo.</p></div><span className={`rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.12em] ${snapshot?.source === "broker" ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-200" : "border-rose-300/25 bg-rose-300/10 text-rose-200"}`}>{snapshot?.source === "broker" ? "FEED REAL OPTGO" : "SEM DADOS REAIS"}</span></div>
-          <div className="p-2 sm:p-4"><TradingChart candles={candles} analysis={analysis} emptyMessage={snapshot?.error ?? "Aguardando candles reais de 1 minuto…"} /></div>
+          <div className="p-2 sm:p-4"><ForceCard force={force} /><TradingChart candles={candles} analysis={analysis} emptyMessage={snapshot?.error ?? "Aguardando candles reais de 1 minuto…"} /></div>
           {snapshot?.error && <div className="mx-4 mb-4 rounded-lg border border-rose-300/15 bg-rose-300/[0.045] px-3 py-2 text-[11px] text-rose-100">{snapshot.error} Nenhum dado simulado será exibido.</div>}
-          <div className="grid gap-px border-t border-white/8 bg-white/5 sm:grid-cols-3"><LineLegend color="bg-orange-400" title="LINHA LARANJA" value={`EMA 9 · ${formatPrice(analysis?.emaOrange)}`} /><LineLegend color="bg-sky-400" title="LINHA AZUL" value={`EMA 21 · ${formatPrice(analysis?.emaBlue)}`} /><LineLegend color="bg-violet-400" title="LATÊNCIA DO FEED" value={`${snapshot?.latencyMs ?? 0} ms · ${snapshot?.candleDurationSeconds ?? 60}s`} /></div>
+          <div className="grid gap-px border-t border-white/8 bg-white/5 sm:grid-cols-4"><LineLegend color="bg-orange-400" title="LINHA LARANJA" value={`EMA 9 · ${formatPrice(analysis?.emaOrange)}`} /><LineLegend color="bg-sky-400" title="LINHA AZUL" value={`EMA 21 · ${formatPrice(analysis?.emaBlue)}`} /><LineLegend color="bg-amber-300" title="SUPORTE HORIZONTAL" value={formatPrice(analysis?.levels.support)} /><LineLegend color="bg-fuchsia-300" title="RESISTÊNCIA HORIZONTAL" value={formatPrice(analysis?.levels.resistance)} /></div>
         </section>
         <section className="grid gap-3 md:grid-cols-3"><InsightCard icon={<Crosshair />} title="REGRA DE COMPRA" text="Vela vermelha testa a linha abaixo, fica próxima e não fecha rompendo o suporte." tone="emerald" /><InsightCard icon={<Crosshair />} title="REGRA DE VENDA" text="Inverso: vela verde testa a linha acima, rejeita a resistência e não fecha rompendo." tone="rose" /><InsightCard icon={<Clock3 />} title="TEMPO REAL" text="Preço atualiza em 1 s; a análise só roda no nascimento de uma nova vela 1M, nunca a cada tick." tone="violet" /></section>
       </div>
@@ -240,9 +257,21 @@ function Terminal({ snapshot, candles, analysis, asset, livePrice, loading, rema
 
         <section className="rounded-2xl border border-white/8 bg-[#10182a]/75 p-4 shadow-2xl shadow-black/10"><p className="text-[10px] font-bold tracking-[0.15em] text-slate-500">CHECKLIST DO VECTOR</p><div className="mt-3 space-y-2">{analysis?.signalReady ? analysis.reasons.map((reason) => <Checklist key={reason} ok text={reason} />) : (analysis?.blocks ?? [snapshot?.error ?? "Aguardando candles reais de 1 minuto."]).map((block) => <Checklist key={block} ok={false} text={block} />)}</div></section>
 
-        <section className="rounded-2xl border border-white/8 bg-[#10182a]/75 p-4 shadow-2xl shadow-black/10"><div className="flex items-center justify-between"><p className="text-[10px] font-bold tracking-[0.15em] text-slate-500">EXECUÇÃO ASSISTIDA</p><span className="rounded-md bg-cyan-300/10 px-1.5 py-0.5 text-[9px] font-bold tracking-[0.12em] text-cyan-200">DEMO</span></div><div className="mt-3 grid grid-cols-2 gap-2"><label className="text-[11px] text-slate-500">Entrada ($)<input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm font-bold text-white outline-none focus:border-violet-300/45" /></label><div className="text-[11px] text-slate-500">Retorno estimado<div className="mt-1.5 rounded-lg border border-emerald-300/15 bg-emerald-300/7 px-3 py-2 text-sm font-bold text-emerald-200">+${estimated.toFixed(2)}</div></div></div><button disabled={!analysis?.signalReady || demoMutation.isPending} onClick={() => analysis && asset && demoMutation.mutate({ activeId: asset.id, direction: analysis.direction === "hold" ? "call" : analysis.direction, amount: Math.max(1, Number(amount) || 1) })} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-300 px-4 py-3 text-sm font-extrabold text-[#0a0f1d] transition hover:bg-violet-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"><Play className="size-4 fill-current" />{demoMutation.isPending ? "Registrando..." : analysis?.signalReady ? "Registrar entrada DEMO" : "Aguardando confirmação Vector"}</button>{demoLog && <p className="mt-2 text-center text-[11px] text-cyan-200">{demoLog}</p>}<p className="mt-3 text-[10px] leading-relaxed text-slate-600">A operação demonstrativa não envia ordem real. Conexão e execução na corretora permanecem desligadas até configuração segura.</p></section>
+        <section className="rounded-2xl border border-white/8 bg-[#10182a]/75 p-4 shadow-2xl shadow-black/10"><div className="flex items-center justify-between"><p className="text-[10px] font-bold tracking-[0.15em] text-slate-500">EXECUÇÃO ASSISTIDA</p><span className="rounded-md bg-cyan-300/10 px-1.5 py-0.5 text-[9px] font-bold tracking-[0.12em] text-cyan-200">DEMO</span></div><div className="mt-3 grid grid-cols-2 gap-2"><label className="text-[11px] text-slate-500">Entrada ($)<input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm font-bold text-white outline-none focus:border-violet-300/45" /></label><div className="text-[11px] text-slate-500">Retorno estimado<div className="mt-1.5 rounded-lg border border-emerald-300/15 bg-emerald-300/7 px-3 py-2 text-sm font-bold text-emerald-200">+${estimated.toFixed(2)}</div></div></div><button type="button" onClick={() => setAutoDemo((value) => !value)} className={`mt-3 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-bold transition ${autoDemo ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-200" : "border-white/10 bg-white/[0.02] text-slate-400"}`}><span>Entrada automática por sinal confirmado</span><span>{autoDemo ? "ATIVA" : "DESLIGADA"}</span></button><button disabled={!analysis?.signalReady || demoMutation.isPending} onClick={() => analysis && asset && demoMutation.mutate({ activeId: asset.id, direction: analysis.direction === "hold" ? "call" : analysis.direction, amount: Math.max(1, Number(amount) || 1) })} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-300 px-4 py-3 text-sm font-extrabold text-[#0a0f1d] transition hover:bg-violet-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"><Play className="size-4 fill-current" />{demoMutation.isPending ? "Registrando..." : analysis?.signalReady ? "Registrar entrada DEMO" : "Aguardando confirmação Vector"}</button>{demoLog && <p className="mt-2 text-center text-[11px] text-cyan-200">{demoLog}</p>}<p className="mt-3 text-[10px] leading-relaxed text-slate-600">A entrada automática está limitada ao registro DEMO e ocorre no máximo uma vez por vela confirmada. Nenhuma ordem real é enviada.</p></section>
       </div>
     </div>
+  </div>;
+}
+
+function ForceCard({ force }: { force: BigPlayersForce }) {
+  const bull = force.winner === "bull";
+  return <div className="mb-3 rounded-xl border border-white/8 bg-black/15 p-3">
+    <div className="flex items-center justify-between gap-3">
+      <div><p className="text-[10px] font-bold tracking-[0.14em] text-slate-500">BIG PLAYERS · PRESSÃO ESTIMADA</p><p className="mt-1 text-[11px] text-slate-500">Fluxo inferido dos corpos das microvelas reais de 1 segundo; não é book institucional.</p></div>
+      <span className={`shrink-0 text-xs font-black ${bull ? "text-emerald-300" : "text-rose-300"}`}>{bull ? "TOUROS" : "URSOS"} +{force.leader}%</span>
+    </div>
+    <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-white/8"><div className="bg-rose-400 transition-all duration-300" style={{ width: `${force.bearPct}%` }} /><div className="bg-emerald-300 transition-all duration-300" style={{ width: `${force.bullPct}%` }} /></div>
+    <div className="mt-1.5 flex justify-between text-[10px] font-bold"><span className="text-rose-300">Ursos {force.bearPct}%</span><span className="text-emerald-300">Touros {force.bullPct}%</span></div>
   </div>;
 }
 
@@ -256,14 +285,14 @@ function TradingChart({ candles, analysis, emptyMessage }: { candles: Candle[]; 
   if (!visible.length) return <div className="flex h-[340px] items-center justify-center px-6 text-center text-sm text-slate-500">{emptyMessage}</div>;
   const width = 960; const height = 350; const pad = { top: 24, right: 18, bottom: 26, left: 18 };
   const orange = analysis?.lines.orange.slice(-visible.length) ?? []; const blue = analysis?.lines.blue.slice(-visible.length) ?? [];
-  const values = [...visible.flatMap((candle) => [candle.high, candle.low]), ...orange, ...blue].filter(Number.isFinite);
+  const values = [...visible.flatMap((candle) => [candle.high, candle.low]), ...orange, ...blue, analysis?.levels.support ?? NaN, analysis?.levels.resistance ?? NaN].filter(Number.isFinite);
   const max = Math.max(...values); const min = Math.min(...values); const range = max - min || 1;
   const chartW = width - pad.left - pad.right; const chartH = height - pad.top - pad.bottom;
   const y = (value: number) => pad.top + ((max - value) / range) * chartH;
   const x = (index: number) => pad.left + (index + 0.5) * (chartW / visible.length);
   const candleWidth = Math.max(3, (chartW / visible.length) * 0.58);
   const path = (series: number[]) => series.map((value, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
-  return <div className="relative overflow-hidden rounded-xl border border-white/6 bg-[#090e19]"><svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full" role="img" aria-label="Gráfico real de velas de 1 minuto com linhas laranja e azul">{[0.2, 0.4, 0.6, 0.8].map((ratio) => <line key={ratio} x1={pad.left} x2={width-pad.right} y1={pad.top + chartH * ratio} y2={pad.top + chartH * ratio} stroke="rgba(148,163,184,.11)" strokeDasharray="4 5" />)}{orange.length > 1 && <path d={path(orange)} fill="none" stroke="#fb923c" strokeWidth="2.4" strokeLinecap="round" />}{blue.length > 1 && <path d={path(blue)} fill="none" stroke="#38bdf8" strokeWidth="2.4" strokeLinecap="round" />}{visible.map((candle, index) => { const rising = candle.close >= candle.open; const color = rising ? "#50e3a4" : "#fb7185"; const center = x(index); const top = y(Math.max(candle.open, candle.close)); const bodyHeight = Math.max(1.5, Math.abs(y(candle.open)-y(candle.close))); return <g key={candle.time}><line x1={center} x2={center} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="1.2" opacity=".9" /><rect x={center-candleWidth/2} y={top} width={candleWidth} height={bodyHeight} rx="1" fill={color} /></g>; })}{analysis?.signalReady && <g transform={`translate(${x(visible.length - 2)},${y(visible[visible.length - 2].high) - 18})`}><circle r="11" fill={analysis.direction === "call" ? "#34d399" : "#fb7185"} opacity=".95" /><path d={analysis.direction === "call" ? "M-4,3 L0,-4 L4,3" : "M-4,-3 L0,4 L4,-3"} fill="none" stroke="#07111f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></g>}</svg><div className="absolute left-3 top-3 rounded-md border border-white/10 bg-[#0b1120]/85 px-2 py-1 font-mono text-[10px] text-slate-500">60 velas reais · 1 minuto</div></div>;
+  return <div className="relative overflow-hidden rounded-xl border border-white/6 bg-[#090e19]"><svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full" role="img" aria-label="Gráfico real de velas de 1 minuto com linhas vetoriais e níveis horizontais">{[0.2, 0.4, 0.6, 0.8].map((ratio) => <line key={ratio} x1={pad.left} x2={width-pad.right} y1={pad.top + chartH * ratio} y2={pad.top + chartH * ratio} stroke="rgba(148,163,184,.11)" strokeDasharray="4 5" />)}{analysis?.levels && <><line x1={pad.left} x2={width-pad.right} y1={y(analysis.levels.support)} y2={y(analysis.levels.support)} stroke="#fbbf24" strokeWidth="1.8" strokeDasharray="8 5" opacity=".85" /><line x1={pad.left} x2={width-pad.right} y1={y(analysis.levels.resistance)} y2={y(analysis.levels.resistance)} stroke="#f0abfc" strokeWidth="1.8" strokeDasharray="8 5" opacity=".85" /><text x={width-pad.right-4} y={y(analysis.levels.support)-4} textAnchor="end" fill="#fbbf24" fontSize="9">SUPORTE</text><text x={width-pad.right-4} y={y(analysis.levels.resistance)-4} textAnchor="end" fill="#f0abfc" fontSize="9">RESISTÊNCIA</text></>}{orange.length > 1 && <path d={path(orange)} fill="none" stroke="#fb923c" strokeWidth="2.4" strokeLinecap="round" />}{blue.length > 1 && <path d={path(blue)} fill="none" stroke="#38bdf8" strokeWidth="2.4" strokeLinecap="round" />}{visible.map((candle, index) => { const rising = candle.close >= candle.open; const color = rising ? "#50e3a4" : "#fb7185"; const center = x(index); const top = y(Math.max(candle.open, candle.close)); const bodyHeight = Math.max(1.5, Math.abs(y(candle.open)-y(candle.close))); return <g key={candle.time}><line x1={center} x2={center} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="1.2" opacity=".9" /><rect x={center-candleWidth/2} y={top} width={candleWidth} height={bodyHeight} rx="1" fill={color} /></g>; })}{analysis?.signalReady && <g transform={`translate(${x(visible.length - 2)},${y(visible[visible.length - 2].high) - 18})`}><circle r="11" fill={analysis.direction === "call" ? "#34d399" : "#fb7185"} opacity=".95" /><path d={analysis.direction === "call" ? "M-4,3 L0,-4 L4,3" : "M-4,-3 L0,4 L4,-3"} fill="none" stroke="#07111f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></g>}</svg><div className="absolute left-3 top-3 rounded-md border border-white/10 bg-[#0b1120]/85 px-2 py-1 font-mono text-[10px] text-slate-500">60 velas reais · 1 minuto</div></div>;
 }
 
 function Scanner({ assets, onSelect }: { assets: OtcAsset[]; onSelect: (id: number) => void }) {

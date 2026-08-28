@@ -29,6 +29,7 @@ export interface MarketSnapshot {
 export interface MarketTick {
   assetId: number;
   candle: Candle | null;
+  candles?: Candle[];
   source: "broker" | "unavailable";
   updatedAt: number;
   error: string | null;

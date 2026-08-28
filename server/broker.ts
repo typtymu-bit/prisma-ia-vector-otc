@@ -296,7 +296,7 @@ export async function getMarketTick(assetId: number): Promise<MarketTick> {
     const candles = await connection.requestAssetCandles(assetId, ONE_SECOND_REQUEST);
     const candle = candles.at(-1);
     if (!candle) throw new Error("A corretora não retornou o preço ao vivo.");
-    return { assetId, candle, source: "broker", updatedAt: Date.now(), error: null };
+    return { assetId, candle, candles: candles.slice(-90), source: "broker", updatedAt: Date.now(), error: null };
   } catch (error) {
     return { assetId, candle: null, source: "unavailable", updatedAt: Date.now(), error: error instanceof Error ? error.message : "Tick OPTGO indisponível." };
   }
