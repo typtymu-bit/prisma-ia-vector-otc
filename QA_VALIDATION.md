@@ -33,3 +33,10 @@ A prévia hidratada mostrou o feed real OPTGO, o ativo EUR/USD OTC e a lista lat
 ## Correção de atualização rápida
 
 Após a última alteração, o terminal foi validado com snapshot de 1 segundo e tick de 500 ms, reaproveitando a mesma conexão persistente do WebSocket. A prévia mostrou feed real OPTGO, preço vivo, sinal PUT, quatro linhas e o nível horizontal de resistência no checklist. A análise continua congelada na vela fechada e o preço vivo somente movimenta a visualização, evitando o atraso visual sem repintura do sinal.
+
+
+## Correção solicitada: quatro linhas horizontais
+
+A análise do `src/lib/analysis.ts` foi refeita sem EMA, RSI ou Bollinger. Agora as quatro linhas são zonas horizontais reais derivadas dos swings e clusters OHLC: suporte 1, suporte 2, resistência 1 e resistência 2. A vela candidata é comparada às zonas formadas antes dela; assim, uma vela que fecha além do nível é bloqueada e não gera compra/venda. O gráfico e as legendas foram atualizados para essas quatro linhas.
+
+A lista lateral, seletor móvel e scanner usam os 27 ativos do arquivo original sem corte artificial. Não há geração de candles fictícios: quando a corretora não responde, o painel permanece sem dados reais.

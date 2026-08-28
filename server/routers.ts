@@ -25,7 +25,7 @@ export const appRouter = router({
       .input(z.object({ activeId: z.number() }))
       .query(({ input }) => getMarketTick(input.activeId)),
     scan: publicProcedure
-      .input(z.object({ activeIds: z.array(z.number()).min(1).max(12) }))
+      .input(z.object({ activeIds: z.array(z.number()).min(1).max(30) }))
       .mutation(async ({ input }) => Promise.all(input.activeIds.map((assetId) => getMarketSnapshot(assetId, 80)))),
     recordDemo: publicProcedure
       .input(

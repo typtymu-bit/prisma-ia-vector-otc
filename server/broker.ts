@@ -251,7 +251,7 @@ class OtcBrokerConnection {
         lastError = error;
         // A white-label OPTGO can keep the authenticated socket alive while
         // dropping the first RPC after a restart. Reconnect once, then expose
-        // the real broker error instead of drawing synthetic market data.
+        // the real broker error instead of inventing market data.
         this.reset(error instanceof Error ? error : new Error("Reconexão OPTGO necessária."));
         if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 150));
       }
