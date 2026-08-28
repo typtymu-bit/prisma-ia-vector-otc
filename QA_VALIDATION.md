@@ -28,3 +28,8 @@ Foi incluída uma opção de entrada automática por sinal confirmado, desligada
 ## Lista ampliada e quatro linhas
 
 A prévia hidratada mostrou o feed real OPTGO, o ativo EUR/USD OTC e a lista lateral ampliada com AUD/JPY e USD/JPY, confirmando que os ativos do arquivo original estão disponíveis para seleção. O gráfico exibiu simultaneamente EMA 9 laranja, EMA 21 azul, suporte horizontal amarelo e resistência horizontal lilás, com seus valores no rodapé e etiquetas no gráfico. As zonas são recalculadas a cada atualização real do snapshot, enquanto o sinal continua baseado na vela fechada para evitar repintura.
+
+
+## Correção de atualização rápida
+
+Após a última alteração, o terminal foi validado com snapshot de 1 segundo e tick de 500 ms, reaproveitando a mesma conexão persistente do WebSocket. A prévia mostrou feed real OPTGO, preço vivo, sinal PUT, quatro linhas e o nível horizontal de resistência no checklist. A análise continua congelada na vela fechada e o preço vivo somente movimenta a visualização, evitando o atraso visual sem repintura do sinal.

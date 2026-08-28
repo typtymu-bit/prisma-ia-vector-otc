@@ -56,16 +56,21 @@ export default function Home() {
   const activeAsset = assets.find((asset) => asset.id === activeId) ?? assets[0];
   const snapshotQuery = trpc.market.snapshot.useQuery(
     { activeId: activeAsset?.id ?? 76, count: 120 },
-    { refetchInterval: 2_000, refetchIntervalInBackground: false, retry: 1, staleTime: 0 },
+    { refetchInterval: 1_000, refetchIntervalInBackground: false, retry: 1, staleTime: 0 },
   );
   const tickQuery = trpc.market.tick.useQuery(
     { activeId: activeAsset?.id ?? 76 },
-    { refetchInterval: 1_000, refetchIntervalInBackground: false, retry: 1, staleTime: 0 },
+    { refetchInterval: 500, refetchIntervalInBackground: false, retry: 1, staleTime: 0 },
   );
   const snapshot = snapshotQuery.data;
   const [analysis, setAnalysis] = useState<VectorAnalysis | null>(null);
   const [analysisCandleTime, setAnalysisCandleTime] = useState<number | null>(null);
   const [microCandles, setMicroCandles] = useState<Candle[]>([]);
+  useEffect(() => {
+    setAnalysis(null);
+    setAnalysisCandleTime(null);
+    setMicroCandles([]);
+  }, [activeId]);
   useEffect(() => {
     const currentCandleTime = snapshot?.candles.at(-1)?.time ?? null;
     const closedCandles = snapshot?.candles.slice(0, -1) ?? [];
