@@ -23,3 +23,8 @@ Foi incluída uma opção de entrada automática por sinal confirmado, desligada
 ## Observação de segurança
 
 “Big Players” é um nome visual para pressão estimada a partir do OHLC de microvelas. O feed consultado não fornece identificação de participantes, ordens institucionais ou book; portanto o painel não deve ser interpretado como leitura direta de grandes players.
+
+
+## Lista ampliada e quatro linhas
+
+A prévia hidratada mostrou o feed real OPTGO, o ativo EUR/USD OTC e a lista lateral ampliada com AUD/JPY e USD/JPY, confirmando que os ativos do arquivo original estão disponíveis para seleção. O gráfico exibiu simultaneamente EMA 9 laranja, EMA 21 azul, suporte horizontal amarelo e resistência horizontal lilás, com seus valores no rodapé e etiquetas no gráfico. As zonas são recalculadas a cada atualização real do snapshot, enquanto o sinal continua baseado na vela fechada para evitar repintura.

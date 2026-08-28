@@ -18,7 +18,7 @@ import {
   Sparkles,
   Waves,
 } from "lucide-react";
-import { analyze, computeBigPlayersForce, type BigPlayersForce, type VectorAnalysis } from "@/lib/analysis";
+import { analyze, computeBigPlayersForce, findHorizontalLevels, type BigPlayersForce, type VectorAnalysis } from "@/lib/analysis";
 import { trpc } from "@/lib/trpc";
 import type { Candle, MarketSnapshot, OtcAsset } from "@shared/market";
 
@@ -96,6 +96,11 @@ export default function Home() {
     candles[candles.length - 1] = { ...last, close: liveClose, high: Math.max(last.high, liveClose), low: Math.min(last.low, liveClose) };
     return candles;
   }, [snapshot, tickQuery.data]);
+  const terminalAnalysis = useMemo(() => {
+    if (!analysis || snapshot?.source !== "broker") return analysis;
+    const closed = snapshot.candles.slice(0, -1);
+    return closed.length >= 23 ? { ...analysis, levels: findHorizontalLevels(closed) } : analysis;
+  }, [analysis, snapshot]);
   const feedLabel = snapshot?.source === "broker" ? "Feed real OPTGO" : snapshot?.source === "unavailable" ? "Feed real indisponível" : "Conectando feed real";
 
   const groupedAssets = useMemo(() => {
@@ -190,7 +195,7 @@ export default function Home() {
           </div>
 
           {view === "terminal" ? (
-            <Terminal snapshot={snapshot} candles={displayCandles} analysis={analysis} force={force} asset={activeAsset} livePrice={livePrice} loading={snapshotQuery.isLoading} remaining={remaining} onRefresh={() => void snapshotQuery.refetch()} />
+            <Terminal snapshot={snapshot} candles={displayCandles} analysis={terminalAnalysis} force={force} asset={activeAsset} livePrice={livePrice} loading={snapshotQuery.isLoading} remaining={remaining} onRefresh={() => void snapshotQuery.refetch()} />
           ) : (
             <Scanner assets={assets} onSelect={(id) => { setActiveId(id); setView("terminal"); }} />
           )}
