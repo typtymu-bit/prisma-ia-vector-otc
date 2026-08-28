@@ -45,3 +45,8 @@ A lista lateral, seletor móvel e scanner usam os 27 ativos do arquivo original 
 ## Atualização sem espera do polling
 
 O terminal agora usa o timestamp do tick real de 1 segundo para agrupar a vela. Quando o primeiro tick entra em um novo minuto, o frontend cria imediatamente a vela em formação localmente, atualiza o preço e dispara a análise da vela anterior. Isso evita esperar a próxima resposta completa de candles de 1 minuto para mostrar o nascimento. A validação final passou com 12 testes, checagem TypeScript e build.
+
+
+## Pullback e falso rompimento
+
+A análise agora identifica falso rompimento usando duas velas: a primeira rompe a zona e a seguinte retorna para dentro. Rompimento falso de suporte com retorno gera R1/compra; rompimento falso de resistência com retorno gera R2/venda. Se o preço permanece fora da zona, o sinal continua bloqueado. Foram adicionados cenários de teste para os dois lados; a suíte final passou com 14 testes.

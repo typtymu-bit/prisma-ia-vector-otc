@@ -35,4 +35,20 @@ describe("Vector reversal analysis", () => {
     expect(result?.signalReady).toBe(false);
     expect(result?.blocks.join(" ")).toContain("rompido");
   });
+
+  it("turns a false resistance breakout into R2 PUT", () => {
+    const candles = [...flatHistory(), { time: 1_800, open: 100.05, high: 100.22, low: 100.02, close: 100.18 }, { time: 1_860, open: 100.14, high: 100.19, low: 100.01, close: 100.04 }];
+    const result = analyze(candles);
+    expect(result?.direction).toBe("put");
+    expect(result?.activeLine).toBe("r2");
+    expect(result?.pattern).toContain("Falso rompimento");
+  });
+
+  it("turns a false support breakout into R1 CALL", () => {
+    const candles = [...flatHistory(), { time: 1_800, open: 99.95, high: 99.98, low: 99.78, close: 99.82 }, { time: 1_860, open: 99.86, high: 100.01, low: 99.81, close: 99.97 }];
+    const result = analyze(candles);
+    expect(result?.direction).toBe("call");
+    expect(result?.activeLine).toBe("r1");
+    expect(result?.pattern).toContain("Falso rompimento");
+  });
 });
