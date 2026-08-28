@@ -1,15 +1,15 @@
 # Validação visual — Prisma IA Vector OTC
 
-A prévia desktop em 1440 × 900 foi revisada após a hidratação dos dados. O terminal exibe corretamente a identidade Prisma IA, a barra lateral de ativos, o gráfico de 60 velas com a linha laranja (EMA 9) e a linha azul (EMA 21), a área de sinal de reversão, o checklist de bloqueios e o cartão de operação em modo demo.
+A prévia desktop em 1440 × 900 foi revisada após a hidratação dos dados. O terminal exibe corretamente a identidade Prisma IA, a barra lateral de ativos, o gráfico de candles com a linha laranja (EMA 9) e a linha azul (EMA 21), a área de sinal de reversão, o checklist de bloqueios e o cartão de operação DEMO.
 
-A tela apresenta dados de simulação enquanto `OPTGO_BROKER_SSID` não é configurado no ambiente do servidor. O indicador de fonte deixa esse estado explícito e a área de execução permanece restrita ao registro demonstrativo. Não há espera artificial de cinco segundos no cliente: a consulta ocorre ao abrir e é repetida em intervalo de um segundo.
+A prévia móvel em 390 × 844 também foi revisada após a hidratação. O cabeçalho, a troca entre Terminal e Scanner, a seleção rápida de ativos, o gráfico com duas linhas e a disposição vertical dos cartões mantêm legibilidade sem rolagem horizontal.
 
-Nenhum problema de hierarquia visual, contraste ou corte foi observado na viewport verificada.
+A navegação do módulo Scanner foi verificada na prévia do navegador. O estado vazio explica a função do scanner e oferece o botão de varredura; a varredura retornou dez estruturas reais, ordenadas por qualidade. A seleção de um resultado (Apple OTC) voltou ao Terminal e atualizou preço, EMA 9, EMA 21 e checklist para o ativo selecionado.
 
-A prévia móvel em 390 × 844 também foi revisada após a hidratação. O cabeçalho, a troca entre Terminal e Scanner, a seleção rápida de ativos, o gráfico com duas linhas e a disposição vertical dos cartões mantêm legibilidade sem rolagem horizontal. O gráfico ajusta a densidade das velas e preserva as cores de sinalização em telas estreitas.
+## Atualização de feed real
 
-A navegação do módulo Scanner foi verificada na prévia do navegador. O estado vazio explica a função do scanner e oferece o botão de varredura, sem quebrar a navegação do terminal. A execução de varredura fica disponível para testar quando a fonte de dados estiver configurada.
+Em 28/08/2026, o preview confirmou a conexão real com a OPTGO: o cabeçalho mostrou “Feed real OPTGO”, o gráfico mostrou 60 candles reais de 1 minuto, a legenda exibiu `60s` e a latência observada foi de 897 ms e depois 574 ms. O preço vivo mudou entre as duas capturas sem substituir a periodicidade do gráfico.
 
-Observação de ambiente: as mensagens 403 visíveis no log são chamadas automáticas de identificação de sessão sem cookie na prévia; o app continua renderizando e os dados simulados carregam corretamente.
+A análise é recalculada somente quando o timestamp da vela 1M muda; o preço/tick é atualizado separadamente a cada segundo e apenas atualiza visualmente a vela aberta. Na segunda captura, o Vector mostrou CALL com 98% e razões de rejeição da vela fechada.
 
-A varredura simulada foi executada com sucesso e retornou dez estruturas ordenadas por qualidade. A seleção de um resultado (Apple OTC) voltou ao Terminal, carregou o gráfico e atualizou preço, EMA 9, EMA 21 e checklist para o ativo selecionado.
+A simulação foi removida: se a corretora falhar, o painel mostra `SEM DADOS REAIS` e não desenha velas fictícias. As mensagens 403 de sessão sem cookie pertencem à identificação automática do preview e não impedem o feed público da tela.

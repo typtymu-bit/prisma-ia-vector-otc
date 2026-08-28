@@ -19,9 +19,19 @@ export interface OtcAsset {
 export interface MarketSnapshot {
   assetId: number;
   candles: Candle[];
-  source: "broker" | "simulated";
+  source: "broker" | "unavailable";
   updatedAt: number;
   latencyMs: number;
+  candleDurationSeconds?: number;
+  error?: string;
+}
+
+export interface MarketTick {
+  assetId: number;
+  candle: Candle | null;
+  source: "broker" | "unavailable";
+  updatedAt: number;
+  error: string | null;
 }
 
 export const OTC_ASSETS: OtcAsset[] = [

@@ -1,151 +1,288 @@
-import type { Candle, MarketSnapshot } from "@shared/market";
+import type { Candle, MarketSnapshot, MarketTick } from "@shared/market";
 
+const AUTH_URL = "https://auth.trade.optgobroker.com/api/v1.0/login";
 const BROKER_WS_URL = "wss://ws.trade.optgobroker.com/echo/websocket";
+const ONE_MINUTE_REQUEST = { size: 60, duration: 60 } as const;
+const ONE_SECOND_REQUEST = { size: 1, duration: 1 } as const;
+const REQUEST_TIMEOUT_MS = 8_000;
+const SESSION_TTL_MS = 45 * 60 * 1_000;
 
-function seededRandom(seed: number) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
+type BrokerMessage = Record<string, unknown>;
+type PendingRequest = { resolve: (value: Candle[]) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
-function simulatedCandles(assetId: number, count: number): Candle[] {
-  const now = Math.floor(Date.now() / 1000);
-  const minute = Math.floor(now / 60);
-  const random = seededRandom(assetId * 7919 + Math.floor(minute / 120));
-  const base = assetId >= 100 ? 67_000 : assetId < 20 ? 180 + assetId * 11 : 1 + (assetId % 7) / 10;
-  const precision = base > 100 ? 0.22 : 0.00045;
-  const candles: Candle[] = [];
-  let price = base * (1 + Math.sin((minute + assetId) / 23) * 0.009);
+function parseJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
 
-  for (let index = 0; index < count; index += 1) {
-    const position = minute - count + 1 + index;
-    const impulse = Math.sin((position + assetId * 3) / 7) * precision * 0.7;
-    const noise = (random() - 0.5) * precision * 0.75;
-    const open = price;
-    const close = open + impulse + noise;
-    const high = Math.max(open, close) + random() * precision * 0.55;
-    const low = Math.min(open, close) - random() * precision * 0.55;
-    candles.push({ time: position * 60, open, high, low, close });
-    price = close;
+function findSession(value: unknown, depth = 0): string | null {
+  if (depth > 5) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length >= 16 ? trimmed : null;
+  }
+  const record = asRecord(value);
+  if (!record) return null;
+
+  for (const key of ["ssid", "SSID", "session", "session_id", "sessionId", "token"]) {
+    const candidate = findSession(record[key], depth + 1);
+    if (candidate) return candidate;
+  }
+  for (const key of ["data", "result", "auth", "profile", "user"]) {
+    const candidate = findSession(record[key], depth + 1);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+function normalizeTuple(item: unknown): Candle | null {
+  if (!Array.isArray(item) || item.length < 5) return null;
+  const numbers = item.slice(0, 5).map(Number);
+  if (numbers.some((number) => !Number.isFinite(number))) return null;
+  const [time, open, close, fourth, fifth] = numbers;
+  const firstOrder = { high: fourth, low: fifth };
+  const secondOrder = { high: fifth, low: fourth };
+  const valid = (candidate: { high: number; low: number }) => candidate.high >= Math.max(open, close) && candidate.low <= Math.min(open, close);
+  const range = valid(firstOrder) ? firstOrder : valid(secondOrder) ? secondOrder : { high: Math.max(fourth, fifth, open, close), low: Math.min(fourth, fifth, open, close) };
+  return { time, open, high: range.high, low: range.low, close };
+}
+
+export function parseBrokerCandles(payload: unknown): Candle[] {
+  const findItems = (value: unknown, depth = 0): unknown[] => {
+    if (depth > 5) return [];
+    const parsed = parseJson(value);
+    if (Array.isArray(parsed)) return parsed;
+    const record = asRecord(parsed);
+    if (!record) return [];
+    for (const key of ["candles", "data", "history", "msg", "result", "body"]) {
+      const items = findItems(record[key], depth + 1);
+      if (items.length > 0) return items;
+    }
+    return [];
+  };
+  const items = findItems(payload);
+
+  return items
+    .map((item): Candle | null => {
+      if (Array.isArray(item)) return normalizeTuple(item);
+      const row = asRecord(item);
+      if (!row) return null;
+      const time = Number(row.from ?? row.time ?? row.timestamp ?? row.at ?? 0);
+      const open = Number(row.open ?? 0);
+      const close = Number(row.close ?? row.open ?? 0);
+      const high = Number(row.max ?? row.high ?? Math.max(open, close));
+      const low = Number(row.min ?? row.low ?? Math.min(open, close));
+      if (![time, open, high, low, close].every(Number.isFinite) || time <= 0) return null;
+      return { time, open, high, low, close };
+    })
+    .filter((candle): candle is Candle => candle !== null)
+    .sort((left, right) => left.time - right.time);
+}
+
+function isOneMinute(candles: Candle[]) {
+  if (candles.length < 2) return false;
+  const recent = candles.slice(-8);
+  const intervals = recent.slice(1).map((candle, index) => candle.time - recent[index].time);
+  return intervals.length > 0 && intervals.every((interval) => interval === 60);
+}
+
+async function loginForSession(): Promise<string> {
+  const email = process.env.OPTGO_BROKER_EMAIL?.trim();
+  const password = process.env.OPTGO_BROKER_PASSWORD?.trim();
+  if (!email || !password) throw new Error("Credenciais OPTGO não configuradas no servidor.");
+
+  const response = await fetch(AUTH_URL, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      origin: "https://trade.optgobroker.com",
+      referer: "https://trade.optgobroker.com/",
+    },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) throw new Error(`Login OPTGO recusado (HTTP ${response.status}).`);
+  const payload = await response.json().catch(() => null);
+  const session = findSession(payload);
+  if (!session) throw new Error("Login OPTGO não retornou uma sessão válida.");
+  return session;
+}
+
+class OtcBrokerConnection {
+  private socket: WebSocket | null = null;
+  private connected = false;
+  private connecting: Promise<void> | null = null;
+  private sequence = 0;
+  private pending = new Map<string, PendingRequest>();
+  private session: string | null = null;
+  private sessionExpiresAt = 0;
+
+  private reset(error: Error) {
+    this.connected = false;
+    this.socket = null;
+    this.pending.forEach((pending) => {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    });
+    this.pending.clear();
   }
 
-  // The final candle evolves inside the current minute so visual validation is
-  // possible before credentials are connected. It never replaces broker data.
-  const active = candles[candles.length - 1];
-  const seconds = now % 60;
-  const liveMove = Math.sin((seconds + assetId) * 0.56) * precision * 0.85;
-  active.close = active.open + liveMove;
-  active.high = Math.max(active.high, active.open, active.close);
-  active.low = Math.min(active.low, active.open, active.close);
-  return candles;
+  private async getSession() {
+    const directSession = process.env.OPTGO_BROKER_SSID?.trim();
+    if (directSession) return directSession;
+    if (!this.session || Date.now() >= this.sessionExpiresAt) {
+      this.session = await loginForSession();
+      this.sessionExpiresAt = Date.now() + SESSION_TTL_MS;
+    }
+    return this.session;
+  }
+
+  private async ensureConnected() {
+    if (this.connected && this.socket) return;
+    if (this.connecting) return this.connecting;
+    this.connecting = (async () => {
+      const session = await this.getSession();
+      const socket = new WebSocket(BROKER_WS_URL);
+      this.socket = socket;
+      const authenticated = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Timeout ao autenticar o WebSocket OPTGO.")), REQUEST_TIMEOUT_MS);
+        const finish = (error?: Error) => {
+          clearTimeout(timer);
+          if (error) reject(error);
+          else resolve();
+        };
+        socket.addEventListener("open", () => socket.send(JSON.stringify({ name: "ssid", msg: session })));
+        socket.addEventListener("message", (event) => {
+          const message = parseJson(event.data);
+          const record = asRecord(message);
+          if (!record) return;
+          if (record.name === "profile") {
+            if (record.msg === false) finish(new Error("A corretora recusou a sessão OPTGO."));
+            else finish();
+          }
+          this.handleMessage(record);
+        });
+        socket.addEventListener("error", () => finish(new Error("Falha de conexão com o WebSocket OPTGO.")));
+        socket.addEventListener("close", () => {
+          this.reset(new Error("Conexão OPTGO encerrada."));
+          if (!this.connected) finish(new Error("Conexão OPTGO encerrada antes da autenticação."));
+        });
+      });
+      await authenticated;
+      this.connected = true;
+    })().catch((error: unknown) => {
+      this.reset(error instanceof Error ? error : new Error("Falha na conexão OPTGO."));
+      throw error;
+    }).finally(() => {
+      this.connecting = null;
+    });
+    return this.connecting;
+  }
+
+  private handleMessage(message: BrokerMessage) {
+    const requestId = String(message.request_id ?? message.requestId ?? "");
+    if (!requestId) return;
+    const pending = this.pending.get(requestId);
+    if (!pending) return;
+    const candles = parseBrokerCandles(message.msg ?? message.candles ?? message.data);
+    if (candles.length > 0) {
+      clearTimeout(pending.timer);
+      this.pending.delete(requestId);
+      pending.resolve(candles);
+    }
+  }
+
+  async requestCandles(params: { size: number; duration: number }, timeout = REQUEST_TIMEOUT_MS) {
+    await this.ensureConnected();
+    if (!this.socket || !this.connected) throw new Error("Sessão OPTGO não está conectada.");
+    const requestId = String(++this.sequence);
+    const candlesPromise = new Promise<Candle[]>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(requestId);
+        reject(new Error("A corretora não respondeu ao pedido de candles."));
+      }, timeout);
+      this.pending.set(requestId, { resolve, reject, timer });
+    });
+    this.socket.send(JSON.stringify({
+      name: "sendMessage",
+      request_id: requestId,
+      msg: {
+        name: "get-candles",
+        version: "2.0",
+        body: { active_id: Number(process.env.OPTGO_DEFAULT_ACTIVE_ID ?? 76), ...params },
+      },
+    }));
+    return candlesPromise;
+  }
+
+  async requestAssetCandles(activeId: number, params: { size: number; duration: number }) {
+    await this.ensureConnected();
+    if (!this.socket || !this.connected) throw new Error("Sessão OPTGO não está conectada.");
+    const requestId = String(++this.sequence);
+    const candlesPromise = new Promise<Candle[]>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(requestId);
+        reject(new Error("A corretora não respondeu ao pedido de candles."));
+      }, REQUEST_TIMEOUT_MS);
+      this.pending.set(requestId, { resolve, reject, timer });
+    });
+    this.socket.send(JSON.stringify({
+      name: "sendMessage",
+      request_id: requestId,
+      msg: { name: "get-candles", version: "2.0", body: { active_id: activeId, ...params } },
+    }));
+    return candlesPromise;
+  }
+
+  async verify() {
+    await this.ensureConnected();
+    return { authenticated: true as const };
+  }
 }
 
-function parseCandles(payload: unknown): Candle[] {
-  const raw = Array.isArray(payload)
-    ? payload
-    : (payload as { candles?: unknown } | null)?.candles;
-  if (!Array.isArray(raw)) return [];
+const connection = new OtcBrokerConnection();
 
-  return raw
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
-    .map((item) => ({
-      time: Number(item.from ?? item.time ?? 0),
-      open: Number(item.open ?? 0),
-      high: Number(item.max ?? item.high ?? item.open ?? 0),
-      low: Number(item.min ?? item.low ?? item.open ?? 0),
-      close: Number(item.close ?? item.open ?? 0),
-    }))
-    .filter((candle) => Number.isFinite(candle.time) && candle.time > 0 && Number.isFinite(candle.close));
-}
-
-async function brokerCandles(activeId: number, count: number): Promise<Candle[] | null> {
-  const ssid = process.env.OPTGO_BROKER_SSID?.trim();
-  if (!ssid) return null;
-
-  const requestId = `vector-${Date.now()}`;
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(BROKER_WS_URL);
-    const timer = setTimeout(() => {
-      socket.close();
-      reject(new Error("Broker candle request timed out"));
-    }, 7000);
-
-    const close = () => {
-      clearTimeout(timer);
-      socket.close();
-    };
-
-    socket.addEventListener("open", () => {
-      socket.send(JSON.stringify({ name: "ssid", msg: ssid }));
-    });
-
-    socket.addEventListener("message", (event) => {
-      let message: Record<string, unknown>;
-      try {
-        message = JSON.parse(String(event.data)) as Record<string, unknown>;
-      } catch {
-        return;
-      }
-
-      if (message.name === "profile" && message.msg === false) {
-        close();
-        reject(new Error("Broker rejected the server session"));
-        return;
-      }
-
-      if (message.name === "profile") {
-        socket.send(
-          JSON.stringify({
-            name: "sendMessage",
-            request_id: requestId,
-            msg: {
-              name: "get-candles",
-              version: "2.0",
-              body: { active_id: activeId, size: 60, duration: 60 },
-            },
-          }),
-        );
-      }
-
-      if ((message.name === "candles" || message.name === "history") && message.request_id === requestId) {
-        const candles = parseCandles(message.msg);
-        close();
-        resolve(candles.slice(-count));
-      }
-    });
-
-    socket.addEventListener("error", () => {
-      close();
-      reject(new Error("Broker WebSocket connection failed"));
-    });
-  });
+export async function verifyBrokerCredentials() {
+  const configured = Boolean(process.env.OPTGO_BROKER_SSID?.trim() || (process.env.OPTGO_BROKER_EMAIL?.trim() && process.env.OPTGO_BROKER_PASSWORD?.trim()));
+  if (!configured) return { configured: false as const, authenticated: false as const, reason: "credentials_not_configured" as const };
+  try {
+    await connection.verify();
+    return { configured: true as const, authenticated: true as const };
+  } catch (error) {
+    return { configured: true as const, authenticated: false as const, reason: error instanceof Error ? error.message : "broker_connection_failed" };
+  }
 }
 
 export async function getMarketSnapshot(assetId: number, count = 120): Promise<MarketSnapshot> {
   const startedAt = Date.now();
   try {
-    const broker = await brokerCandles(assetId, count);
-    if (broker && broker.length >= 23) {
-      return {
-        assetId,
-        candles: broker,
-        source: "broker",
-        updatedAt: Date.now(),
-        latencyMs: Date.now() - startedAt,
-      };
+    const candles = (await connection.requestAssetCandles(assetId, ONE_MINUTE_REQUEST)).slice(-count);
+    if (candles.length < 23 || !isOneMinute(candles)) {
+      return { assetId, candles: [], source: "unavailable", updatedAt: Date.now(), latencyMs: Date.now() - startedAt, error: "A corretora não retornou candles reais de 1 minuto para este ativo." };
     }
-  } catch {
-    // A credentials/connectivity error must never expose secret values or
-    // prevent the user from inspecting the dashboard in simulation mode.
+    return { assetId, candles, source: "broker", updatedAt: Date.now(), latencyMs: Date.now() - startedAt, candleDurationSeconds: 60 };
+  } catch (error) {
+    return { assetId, candles: [], source: "unavailable", updatedAt: Date.now(), latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : "Feed OPTGO indisponível." };
   }
-
-  return {
-    assetId,
-    candles: simulatedCandles(assetId, count),
-    source: "simulated",
-    updatedAt: Date.now(),
-    latencyMs: Date.now() - startedAt,
-  };
 }
+
+export async function getMarketTick(assetId: number): Promise<MarketTick> {
+  try {
+    const candles = await connection.requestAssetCandles(assetId, ONE_SECOND_REQUEST);
+    const candle = candles.at(-1);
+    if (!candle) throw new Error("A corretora não retornou o preço ao vivo.");
+    return { assetId, candle, source: "broker", updatedAt: Date.now(), error: null };
+  } catch (error) {
+    return { assetId, candle: null, source: "unavailable", updatedAt: Date.now(), error: error instanceof Error ? error.message : "Tick OPTGO indisponível." };
+  }
+}
+
+export { ONE_MINUTE_REQUEST, ONE_SECOND_REQUEST };

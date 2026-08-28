@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { OTC_ASSETS } from "@shared/market";
 import { COOKIE_NAME } from "@shared/const";
-import { getMarketSnapshot } from "./broker";
+import { getMarketSnapshot, getMarketTick } from "./broker";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
@@ -21,6 +21,9 @@ export const appRouter = router({
     snapshot: publicProcedure
       .input(z.object({ activeId: z.number(), count: z.number().min(30).max(180).default(120) }))
       .query(({ input }) => getMarketSnapshot(input.activeId, input.count)),
+    tick: publicProcedure
+      .input(z.object({ activeId: z.number() }))
+      .query(({ input }) => getMarketTick(input.activeId)),
     scan: publicProcedure
       .input(z.object({ activeIds: z.array(z.number()).min(1).max(12) }))
       .mutation(async ({ input }) => Promise.all(input.activeIds.map((assetId) => getMarketSnapshot(assetId, 80)))),
