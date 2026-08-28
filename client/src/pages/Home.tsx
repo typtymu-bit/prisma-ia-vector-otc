@@ -90,6 +90,7 @@ export default function Home() {
     candles[candles.length - 1] = { ...last, close: liveClose, high: Math.max(last.high, liveClose), low: Math.min(last.low, liveClose) };
     return candles;
   }, [snapshot, tickQuery.data]);
+  const feedLabel = snapshot?.source === "broker" ? "Feed real OPTGO" : snapshot?.source === "unavailable" ? "Feed real indisponível" : "Conectando feed real";
 
   const groupedAssets = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -128,11 +129,11 @@ export default function Home() {
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 sm:flex">
               <Waves className="size-3.5 text-cyan-300" />
-              <span className="text-[11px] font-semibold text-slate-300">{snapshot?.source === "broker" ? "Feed real OPTGO" : "Feed real indisponível"}</span>
+              <span className="text-[11px] font-semibold text-slate-300">{feedLabel}</span>
             </div>
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/8 px-3 py-2">
-              <span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-300 opacity-65" /><span className="relative inline-flex size-2 rounded-full bg-emerald-300" /></span>
-              <span className="text-[10px] font-bold tracking-[0.12em] text-emerald-200">ATUALIZANDO</span>
+            <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${snapshot?.source === "unavailable" ? "border-rose-300/20 bg-rose-300/8" : "border-emerald-400/20 bg-emerald-400/8"}`}>
+              <span className={`relative flex size-2 ${snapshot?.source === "unavailable" ? "" : ""}`}><span className={`absolute inline-flex size-full animate-ping rounded-full opacity-65 ${snapshot?.source === "unavailable" ? "bg-rose-300" : "bg-emerald-300"}`} /><span className={`relative inline-flex size-2 rounded-full ${snapshot?.source === "unavailable" ? "bg-rose-300" : "bg-emerald-300"}`} /></span>
+              <span className={`text-[10px] font-bold tracking-[0.12em] ${snapshot?.source === "unavailable" ? "text-rose-200" : "text-emerald-200"}`}>{snapshot?.source === "unavailable" ? "SEM CONEXÃO" : "ATUALIZANDO"}</span>
             </div>
           </div>
         </div>
@@ -233,7 +234,7 @@ function Terminal({ snapshot, candles, analysis, asset, livePrice, loading, rema
 
       <div className="space-y-4">
         <section className={`overflow-hidden rounded-2xl border bg-[#10182a]/90 shadow-2xl shadow-black/10 ${signalColor === "emerald" ? "border-emerald-300/30" : signalColor === "rose" ? "border-rose-300/30" : "border-violet-300/25"}`}>
-          <div className="border-b border-white/8 p-4 text-center"><p className="text-[10px] font-bold tracking-[0.16em] text-slate-500">SINAL NA ABERTURA DA NOVA 1M</p>{analysis?.signalReady ? <><div className={`mt-2 flex items-center justify-center gap-2 text-3xl font-black tracking-tight ${analysis.direction === "call" ? "text-emerald-300" : "text-rose-300"}`}>{analysis.direction === "call" ? <ArrowUpRight className="size-7" /> : <ArrowDownRight className="size-7" />}{analysis.direction.toUpperCase()}</div><p className="mt-2 text-xs font-medium text-slate-300">{analysis.pattern}</p></> : <><div className="mt-2 text-xl font-black tracking-tight text-violet-200">{snapshot?.source === "unavailable" ? "FEED INDISPONÍVEL" : "EM OBSERVAÇÃO"}</div><p className="mt-2 text-xs leading-relaxed text-slate-500">{snapshot?.error ?? "O Vector analisa a vela fechada apenas quando detecta o nascimento da próxima vela de 1 minuto."}</p></>}</div>
+          <div className="border-b border-white/8 p-4 text-center"><p className="text-[10px] font-bold tracking-[0.16em] text-slate-500">SINAL NA ABERTURA DA NOVA 1M</p>{analysis?.signalReady ? <><div className={`mt-2 flex items-center justify-center gap-2 text-3xl font-black tracking-tight ${analysis.direction === "call" ? "text-emerald-300" : "text-rose-300"}`}>{analysis.direction === "call" ? <ArrowUpRight className="size-7" /> : <ArrowDownRight className="size-7" />}{analysis.direction.toUpperCase()}</div><p className="mt-2 text-xs font-medium text-slate-300">{analysis.pattern}</p></> : <><div className="mt-2 text-xl font-black tracking-tight text-violet-200">{snapshot?.source === "unavailable" ? "FEED INDISPONÍVEL" : snapshot ? "EM OBSERVAÇÃO" : "CONECTANDO FEED"}</div><p className="mt-2 text-xs leading-relaxed text-slate-500">{snapshot?.error ?? "O Vector analisa a vela fechada apenas quando detecta o nascimento da próxima vela de 1 minuto."}</p></>}</div>
           <div className="p-4"><div className="flex items-center justify-between text-xs"><span className="text-slate-500">Qualidade da estrutura</span><span className="font-bold text-white">{analysis?.confidence ?? 0}%</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-white/7"><div className={`h-full rounded-full transition-all duration-300 ${signalColor === "emerald" ? "bg-emerald-300" : signalColor === "rose" ? "bg-rose-300" : "bg-violet-300"}`} style={{ width: `${analysis?.confidence ?? 0}%` }} /></div><div className="mt-4 rounded-xl border border-white/8 bg-black/15 p-3"><div className="flex items-center gap-2"><Sparkles className="size-3.5 text-violet-300" /><span className="text-[11px] font-bold text-slate-300">{analysis?.context ?? "Aguardando feed"}</span></div><p className="mt-1.5 text-[11px] text-slate-500">{analysis?.activeLine ? `Linha ativa: ${analysis.activeLine === "orange" ? "laranja / EMA 9" : "azul / EMA 21"}` : "Nenhuma linha validada como suporte ou resistência."}</p></div></div>
         </section>
 
